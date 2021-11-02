@@ -29,7 +29,7 @@ import { Config } from './types';
 import { upload } from './commands/upload';
 import { verifyTokenMetadata } from './commands/verifyTokenMetadata';
 import { generateConfigurations } from './commands/generateConfigurations';
-import { loadCache, saveCache } from './helpers/cache';
+import { loadCache, saveCache, saveImagesURLs } from './helpers/cache';
 import { mint } from './commands/mint';
 import { signMetadata } from './commands/sign';
 import { signAllMetadataFromCandyMachine } from './commands/signAll';
@@ -177,6 +177,7 @@ programCommand('verify_token_metadata')
     '<directory>',
     'Directory containing images and metadata files named from 0-n',
     val => {
+      console.log(val);
       return fs
         .readdirSync(`${val}`)
         .map(file => path.join(process.cwd(), val, file));
@@ -202,8 +203,12 @@ programCommand('verify')
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
+  .option(
+    '-o, --only-save-images-urls',
+    'flag to save the images URLs in a cache file',
+  )
   .action(async (directory, cmd) => {
-    const { env, keypair, rpcUrl, cacheName } = cmd.opts();
+    const { env, keypair, rpcUrl, cacheName, onlySaveImagesUrls } = cmd.opts();
 
     const cacheContent = loadCache(cacheName, env);
     const walletKeyPair = loadWalletKey(keypair);
@@ -214,6 +219,8 @@ programCommand('verify')
       configAddress,
     );
     let allGood = true;
+
+    const imagesURLs = {};
 
     const keys = Object.keys(cacheContent.items);
     await Promise.all(
@@ -251,27 +258,43 @@ programCommand('verify')
                 const body = await json.text();
                 const parsed = JSON.parse(body);
                 if (parsed.image) {
-                  const check = await fetch(parsed.image);
-                  if (
-                    check.status == 200 ||
-                    check.status == 204 ||
-                    check.status == 202
-                  ) {
-                    const text = await check.text();
-                    if (!text.match(/Not found/i)) {
-                      if (text.length == 0) {
+                  // Save image URLs
+                  if (onlySaveImagesUrls) {
+                    imagesURLs[key] = parsed.image;
+                  } else {
+                    const check = await fetch(parsed.image);
+                    if (
+                      check.status == 200 ||
+                      check.status == 204 ||
+                      check.status == 202
+                    ) {
+                      const text = await check.text();
+                      if (!text.match(/Not found/i)) {
+                        if (text.length == 0) {
+                          log.info(
+                            'Name',
+                            name,
+                            'with',
+                            uri,
+                            'has zero length, failing',
+                          );
+                          cacheItem.link = null;
+                          cacheItem.onChain = false;
+                          allGood = false;
+                        } else {
+                          log.info('Name', name, 'with', uri, 'checked out');
+                        }
+                      } else {
                         log.info(
                           'Name',
                           name,
                           'with',
                           uri,
-                          'has zero length, failing',
+                          'never got uploaded to arweave, failing',
                         );
                         cacheItem.link = null;
                         cacheItem.onChain = false;
                         allGood = false;
-                      } else {
-                        log.info('Name', name, 'with', uri, 'checked out');
                       }
                     } else {
                       log.info(
@@ -279,24 +302,13 @@ programCommand('verify')
                         name,
                         'with',
                         uri,
-                        'never got uploaded to arweave, failing',
+                        'returned non-200 from uploader',
+                        check.status,
                       );
                       cacheItem.link = null;
                       cacheItem.onChain = false;
                       allGood = false;
                     }
-                  } else {
-                    log.info(
-                      'Name',
-                      name,
-                      'with',
-                      uri,
-                      'returned non-200 from uploader',
-                      check.status,
-                    );
-                    cacheItem.link = null;
-                    cacheItem.onChain = false;
-                    allGood = false;
                   }
                 } else {
                   log.info(
@@ -334,6 +346,10 @@ programCommand('verify')
       throw new Error(
         `not all NFTs checked out. check out logs above for details`,
       );
+    }
+
+    if (onlySaveImagesUrls) {
+      saveImagesURLs(imagesURLs);
     }
 
     const configData = (await anchorProgram.account.config.fetch(

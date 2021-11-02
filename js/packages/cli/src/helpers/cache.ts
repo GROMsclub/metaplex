@@ -34,3 +34,10 @@ export function saveCache(
     JSON.stringify(cacheContent),
   );
 }
+
+export function saveImagesURLs (imagesURLs) {
+  fs.writeFileSync(
+    path.join(CACHE_PATH, `images-urls.json`),
+    JSON.stringify(imagesURLs),
+  );
+}

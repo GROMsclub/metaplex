@@ -14,10 +14,15 @@ incremented for features.
 ### Features
 
 - Added Token Entangler smart contract and CLI
+- Add update authority command for candy machine
+- Implemented NFT Packs Creation and Viewing Flow
+- Display items redeemed when running Candy Machine Show command
+- Ability to create auctions with any SPL-token mint by @JuanRdBO
 
 ### Fixes
 
-- N/A
+- Fixes #840 - Claim button visible after claim.
+- Improve Candy Machine CLI `create_generative_art` command performance. (@0xCryptoSheik in #899)
 
 ### Breaking
 
